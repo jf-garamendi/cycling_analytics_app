@@ -60,7 +60,7 @@ def build_df(record_msg):
 
     return df
 
-#@st.cache_data
+@st.cache_data
 def pair_rides(list_file_content_1, list_file_content_2):
     #st.write('pair_rides')
 

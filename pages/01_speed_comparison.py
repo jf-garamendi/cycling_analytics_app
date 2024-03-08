@@ -5,8 +5,10 @@ import pandas as pd
 from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 ### CONSTANTS
+TEST = True
 
 # Number of decimals for rounding in the coordinates
 N_DECIMALS = 4
@@ -28,14 +30,18 @@ def read_files(list_file_content):
 
         fit_raw_data = gzip.decompress(bytes_data)
 
+        
+        #TODO: This code gives problems with file Malcotti, strade Bianche. Find out why
+        
         stream = Stream.from_byte_array(fit_raw_data)
         decoder = Decoder(stream)
         messages, errors = decoder.read()
         
         if len(messages['record_mesgs'])>3:
-            columns = messages['record_mesgs'][0].keys()
-            if ("position_long" in columns) and ("position_lat" in columns) and ("enhanced_speed" in columns ) and ("distance" in columns):
-                rides.append(messages['record_mesgs'])
+            rides.append(messages['record_mesgs'])
+
+
+
 
     return rides
 
@@ -44,8 +50,9 @@ def build_df(record_msg):
     #st.write('build_df')
     df = pd.DataFrame(record_msg)
 
+
     # values without gps coordinates are uselss
-    df.dropna(subset=["position_long", "position_lat"],inplace=True)
+    df.dropna(subset=["timestamp", "position_long", "position_lat", "distance", "enhanced_speed"],inplace=True)
 
     # Transform into degrees
     df["position_long"] = (df["position_long"] / 11930465).round(N_DECIMALS)
@@ -72,6 +79,7 @@ def pair_rides(list_file_content_1, list_file_content_2):
 
     paired_1 = []
     paired_2 = []
+    located_starts = []
 
     for df_1 in rides_df_1:        
         i = 0
@@ -83,21 +91,64 @@ def pair_rides(list_file_content_1, list_file_content_2):
                 diff_time = (max(df_1.iloc[2]['timestamp'], df_2.iloc[2]['timestamp']) - min(df_1.iloc[2]['timestamp'], df_2.iloc[2]['timestamp']))
                 #diff_pos = max(df_1.iloc[2]['position_long'] - df_2.iloc[2]['position_long'], df_1.iloc[2]['position_lat'] - df_2.iloc[2]['position_lat'])
 
-                if (diff_time.seconds < DELTA_SECONDS) and diff_time.days == 0:
-                    equals = True
+                #if races are the same day
+                if  diff_time.days == 0:
+
+                    if df_1.iloc[0]['timestamp'] < df_2.iloc[0]['timestamp']:
+                        earlier_df = df_1
+                        later_df = df_2
+                    else:
+                        earlier_df = df_2
+                        later_df = df_1
                     
-                    paired_1.append(df_1)
-                    paired_2.append(df_2)
+                    located_common_start = False
+                    pos_time = 0
+                    t2 = later_df.iloc[0]['timestamp']
+                    while (not located_common_start) and (pos_time < earlier_df.shape[0]):
+                        t1 = earlier_df.iloc[pos_time]['timestamp']
+                        
+
+                        if (t2-t1).seconds <= 1:
+                                                
+                            #paired_1.append(df_1[pos_time:-1])
+                            paired_1.append(df_1)
+                            paired_2.append(df_2)
+
+                            located_starts.append(t1)
+
+                            located_common_start = True
+                        
+                        pos_time +=1
             
             i += 1
 
-    return paired_1, paired_2
+    return paired_1, paired_2, located_starts
         
 @st.cache_data        
-def get_joint_data(df_1, df_2, tracks = None):
+def get_joint_data(df_1, df_2, start_hour, tracks = None):
     #st.write('get_joint_data')
-    
 
+    def set_start(df):
+        located_start = False
+        pos_time = 0
+    
+        while (not located_start) and (pos_time < df.shape[0]):
+            t = df.iloc[pos_time]['timestamp']
+        
+            if abs(start_hour - t.timestamp()) <= 1:
+                df = df[pos_time:-1]
+                
+                offset = df.iloc[0]['distance'] 
+                df['distance'] = df['distance'].apply(lambda x: x-offset)                                                
+
+                located_start = True
+        
+            pos_time +=1
+
+        return df
+    
+    df_1 = set_start(df_1)
+    df_2 = set_start(df_2)
 
     end = int(np.round((df_1.iloc[-1]["distance"]+ df_2.iloc[-1]["distance"])/2))
 
@@ -221,14 +272,20 @@ def run():
 
     uploaded_files_2 = st.file_uploader("Choose a set of FIT.gz file for the second rider", accept_multiple_files=True)
 
-    rides_df_1, rides_df_2 = pair_rides(uploaded_files_1, uploaded_files_2)
+    rides_df_1, rides_df_2, located_starts = pair_rides(uploaded_files_1, uploaded_files_2)
 
     if len(rides_df_1)  == 0 or (len(rides_df_1) != len(rides_df_2)):
         st.write('THERE IS NO CORRESPONDENCE BETWEEN FILES')
     else:        
 
-        for df_1, df_2 in zip (rides_df_1, rides_df_2):
-            s1, s2, dis, alt= get_joint_data(df_1, df_2)
+        for df_1, df_2, start_datetime in zip (rides_df_1, rides_df_2, located_starts):
+            start_date = st.date_input('Estimated day ', value=start_datetime)
+            start_time = st.time_input("Estimated hour, fix it if needed: ", value = start_datetime, step=60)
+
+            start_datetime = datetime.combine(start_date, start_time)
+            start_datetime = datetime.timestamp(start_datetime)
+
+            s1, s2, dis, alt= get_joint_data(df_1, df_2, start_datetime)
 
             str_date = df_1.iloc[0]['timestamp'].strftime("%d %B, %Y")
             title = f"Race comparative: {str_date}"
@@ -244,7 +301,7 @@ def run():
 
 
 if __name__ == '__main__':
-        run()
+    run()
 
 
 

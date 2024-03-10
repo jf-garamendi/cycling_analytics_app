@@ -14,7 +14,7 @@ TEST = True
 N_DECIMALS = 4
 
 #Difference in seconds to consider two activities correspond to the same race
-DELTA_SECONDS = 900 # 10 minutes
+DELTA_SECONDS = 2 # 1 minutes
 
 # Speed threshold, in Km/h to consider two speeds as equal
 SPEED_THR = 0.25
@@ -25,6 +25,7 @@ SPEED_THR = 0.25
 @st.cache_data
 def read_files(list_file_content):
     rides = []
+    events = []
     for f in list_file_content:
         bytes_data = f.read()
 
@@ -39,20 +40,23 @@ def read_files(list_file_content):
         
         if len(messages['record_mesgs'])>3:
             rides.append(messages['record_mesgs'])
+            events.append(messages['event_mesgs'])
 
-
-
-
-    return rides
+    return rides, events
 
 @st.cache_data
-def build_df(record_msg):
+def build_df(record_msg, events_msg):
     #st.write('build_df')
     df = pd.DataFrame(record_msg)
+
+    df['is_start'] = False
+    
 
 
     # values without gps coordinates are uselss
     df.dropna(subset=["timestamp", "position_long", "position_lat", "distance", "enhanced_speed"],inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
 
     # Transform into degrees
     df["position_long"] = (df["position_long"] / 11930465).round(N_DECIMALS)
@@ -64,22 +68,28 @@ def build_df(record_msg):
     #Distance in meters
     df["distance"] = (df["distance"] ).round().astype(int)
 
+    start_hours = [ msg['timestamp'].timestamp() for msg in events_msg if ( msg['event']=='timer' and msg['event_type']=='start')]
+
+    df['is_start'] = df['timestamp'].apply(lambda x : x.timestamp() in start_hours)
+    df.loc[0, 'is_start'] = True
+
+
 
     return df
+
 
 @st.cache_data
 def pair_rides(list_file_content_1, list_file_content_2):
     #st.write('pair_rides')
 
-    rides_1 = read_files(list_file_content_1)
-    rides_2 = read_files(list_file_content_2)
+    rides_1, events_1 = read_files(list_file_content_1)
+    rides_2, events_2 = read_files(list_file_content_2)
 
-    rides_df_1 = [build_df(r) for r in rides_1]
-    rides_df_2 = [build_df(r) for r in rides_2]
+    rides_df_1 = [build_df(r, e) for r,e in zip(rides_1, events_1)]
+    rides_df_2 = [build_df(r, e) for r,e in zip(rides_2, events_2)]
 
     paired_1 = []
     paired_2 = []
-    located_starts = []
 
     for df_1 in rides_df_1:        
         i = 0
@@ -93,36 +103,13 @@ def pair_rides(list_file_content_1, list_file_content_2):
 
                 #if races are the same day
                 if  diff_time.days == 0:
-
-                    if df_1.iloc[0]['timestamp'] < df_2.iloc[0]['timestamp']:
-                        earlier_df = df_1
-                        later_df = df_2
-                    else:
-                        earlier_df = df_2
-                        later_df = df_1
                     
-                    located_common_start = False
-                    pos_time = 0
-                    t2 = later_df.iloc[0]['timestamp']
-                    while (not located_common_start) and (pos_time < earlier_df.shape[0]):
-                        t1 = earlier_df.iloc[pos_time]['timestamp']
-                        
-
-                        if (t2-t1).seconds <= 1:
-                                                
-                            #paired_1.append(df_1[pos_time:-1])
-                            paired_1.append(df_1)
-                            paired_2.append(df_2)
-
-                            located_starts.append(t1)
-
-                            located_common_start = True
-                        
-                        pos_time +=1
+                    paired_1.append(df_1)
+                    paired_2.append(df_2)
             
             i += 1
 
-    return paired_1, paired_2, located_starts
+    return paired_1, paired_2
         
 @st.cache_data        
 def get_joint_data(df_1, df_2, start_hour, tracks = None):
@@ -221,6 +208,59 @@ def plot_profile_comparative(speeds_1, speeds_2, distances, altitudes, name_1, n
 
     return fig
 
+@st.cache_data
+def locate_start(df_1, df_2):
+    start = None
+    starts_1 = []
+    starts_2 = []
+
+    start_hours = df_1[df_1['is_start']]['timestamp']
+
+    
+    for  time_1 in start_hours:
+
+        located_start = False
+        pos_2 = 0
+        while (not located_start) and (pos_2 < df_2.shape[0] ):
+            time_2 = df_2.iloc[pos_2]['timestamp']
+
+            if abs(time_1.timestamp() - time_2.timestamp() ) < DELTA_SECONDS:
+                located_start = True
+
+                starts_1.append(time_1)
+        
+            pos_2 += 1
+
+ 
+    start_hours = df_2[df_2['is_start']]['timestamp']    
+    for  time_2 in start_hours:
+
+        located_start = False
+        pos_1 = 0
+        while (not located_start) and (pos_1 < df_1.shape[0] ):
+            time_1 = df_1.iloc[pos_1]['timestamp']
+
+            if abs(time_1.timestamp() - time_2.timestamp() ) < DELTA_SECONDS:
+                located_start = True
+
+                starts_2.append(time_2)
+        
+            pos_1 += 1
+
+
+    # Keep the lowest
+    #located_start = False
+    #pos_1 = 0
+    # while (not located_start) and (pos_1 < len(starts_1)):
+    #    time_1 = starts_1[pos_1]
+
+    #    pos_2 = 0
+    #    while (not located_start) and (pos_2 < len(starts_2)):
+    #        time_2 = starts_2[pos_2]
+
+    start = min (starts_1 + starts_2)
+
+    return start
 
 
 # def make_map(df_1, df_2):
@@ -272,13 +312,15 @@ def run():
 
     uploaded_files_2 = st.file_uploader("Choose a set of FIT.gz file for the second rider", accept_multiple_files=True)
 
-    rides_df_1, rides_df_2, located_starts = pair_rides(uploaded_files_1, uploaded_files_2)
+    rides_df_1, rides_df_2= pair_rides(uploaded_files_1, uploaded_files_2)
 
     if len(rides_df_1)  == 0 or (len(rides_df_1) != len(rides_df_2)):
         st.write('THERE IS NO CORRESPONDENCE BETWEEN FILES')
     else:        
 
-        for df_1, df_2, start_datetime in zip (rides_df_1, rides_df_2, located_starts):
+        for df_1, df_2 in zip (rides_df_1, rides_df_2):
+            start_datetime = locate_start(df_1, df_2)
+
             start_date = st.date_input('Estimated day ', value=start_datetime)
             start_time = st.time_input("Estimated hour, fix it if needed: ", value = start_datetime, step=60)
 

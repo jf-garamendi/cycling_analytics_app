@@ -401,18 +401,18 @@ def run():
             #st.map(df_1_bis, latitude='position_lat', longitude='position_long', size=100)
             map = folium.Map(location=[df_1.iloc[10]["position_lat"], df_1.iloc[10]["position_long"] ], zoom_start=13)
             track = [ (lat, long) for lat,long in zip(df_1_bis["position_lat"].values, df_1_bis["position_long"].values)]
-            folium.PolyLine(track, color='red', weight=8).add_to(map)            
-            icon_end = folium.Icon(color="red", icon="stop")
-            icon_start = folium.Icon(color="red", icon="play", weight=100)
-            folium.Marker(location=track[0], icon=icon_start).add_to(map)
-            folium.Marker(location=track[-1], icon=icon_end).add_to(map)
-
-            track = [ (lat, long) for lat,long in zip(df_2_bis["position_lat"].values, df_2_bis["position_long"].values)]
-            folium.PolyLine(track, color='blue', weight=4).add_to(map)
-            icon_end = folium.Icon(color="blue", icon="stop")
+            folium.PolyLine(track, color='blue', weight=8).add_to(map)            
+            # icon_end = folium.Icon(color="blue", icon="stop")
             icon_start = folium.Icon(color="blue", icon="play")
             folium.Marker(location=track[0], icon=icon_start).add_to(map)
-            folium.Marker(location=track[-1], icon=icon_end).add_to(map)
+            #folium.Marker(location=track[-1], icon=icon_end).add_to(map)
+
+            track = [ (lat, long) for lat,long in zip(df_2_bis["position_lat"].values, df_2_bis["position_long"].values)]
+            folium.PolyLine(track, color='red', weight=4).add_to(map)
+            # icon_end = folium.Icon(color="red", icon="stop")
+            icon_start = folium.Icon(color="red", icon="play")
+            folium.Marker(location=track[0], icon=icon_start).add_to(map)
+            # folium.Marker(location=track[-1], icon=icon_end).add_to(map)
             
             st_data = st_folium(map, width=725)
 

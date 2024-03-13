@@ -245,7 +245,29 @@ def plot_profile_comparative(speeds_1, speeds_2, distances, altitudes, name_1, n
     #ax.set_xticklabels(distances[idx], fontsize=25)
     #ax.set_yticklabels(altitudes[idx], fontsize=25)
 
-    return fig
+    return fig, ax
+
+import pandas as pd
+
+import pandas as pd
+
+def add_kilojoules_per_hour(df):
+    # Convert power in watts to kilojoules (1 watt-second = 0.001 kilojoules)
+    df['kilojoules'] = df['power'] * 0.001
+    
+    # Calculate the rolling sum over the last 3600 seconds (1 hour), assuming the data is in 1-second intervals
+    tmp_df = df[['timestamp', 'kilojoules']].copy()
+    tmp_df = tmp_df.set_index('timestamp')    
+    tmp_df = tmp_df.rolling(window=timedelta(hours=1), min_periods=1).sum()
+    df['kilojoules_last_hour']  = tmp_df['kilojoules'].values
+    
+    return df
+
+# Example usage:
+# Assuming 'data' is your DataFrame with 'timestamp' and 'power' columns
+# data = add_kilojoules_per_hour(data)
+
+
 
 # @st.cache_data
 # def locate_start(df_1, df_2):
@@ -342,12 +364,17 @@ def plot_profile_comparative(speeds_1, speeds_2, distances, altitudes, name_1, n
 ############ Main
 def run():
     ### Streamlit
+    st.header("Rider 1")
     rider_name_1 = st.text_input('Name of the first rider')
+    weight_1 = st.number_input(f'Insert weight for rider {rider_name_1}', value=1)
     
     
     uploaded_files_1 = st.file_uploader("Choose a set of FIT.gz file for the first rider", accept_multiple_files=True)
 
+    st.header ("Rider 2")
+
     rider_name_2 = st.text_input('Name of the second rider')
+    weight_2 = st.number_input(f'Insert weight for rider {rider_name_2}', value=1)
 
     uploaded_files_2 = st.file_uploader("Choose a set of FIT.gz file for the second rider", accept_multiple_files=True)
 
@@ -387,6 +414,10 @@ def run():
             offset = df_2_bis.iloc[0]['distance'] 
             df_2_bis['distance'] = df_2_bis['distance'].apply(lambda x: x-offset)
 
+            #Compute kilojules
+            df_1_bis = add_kilojoules_per_hour(df_1_bis)
+            df_2_bis = add_kilojoules_per_hour(df_2_bis)
+
             #segment selection
             total_km = np.round(max(df_1_bis.iloc[-1]['distance'], df_2_bis.iloc[-1]['distance'])/1000).astype(int)
             segment = st.slider("choose start and finish of the segment (in Km) ", 
@@ -424,7 +455,14 @@ def run():
             str_date = df_1.iloc[0]['timestamp'].strftime("%d %B, %Y")
             title = f"Race comparative: {str_date}"
 
-            fig = plot_profile_comparative(s1, s2, np.array(dis), np.array(alt), rider_name_1, rider_name_2, title)
+            fig, ax_altitude = plot_profile_comparative(s1, s2, np.array(dis), np.array(alt), rider_name_1, rider_name_2, title)
+
+            ax2 = ax_altitude.twinx()
+            ax2.set_ylabel('Kj/h/kg', fontsize=25)
+            
+            ax2.plot(df_1_bis['distance']/1000, df_1_bis['kilojoules_last_hour']/weight_1, color='blue')
+            ax2.plot(df_2_bis['distance']/1000, df_2_bis['kilojoules_last_hour']/weight_2, color='red')
+
 
             st.pyplot(fig)
 

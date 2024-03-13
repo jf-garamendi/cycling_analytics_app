@@ -175,15 +175,16 @@ def get_joint_data(df_1, df_2,  tracks = None):
     # #------------------
     # #------------------
 
+    start = int(np.round((df_1.iloc[0]["distance"]+ df_2.iloc[0]["distance"])/2))
     end = int(np.round((df_1.iloc[-1]["distance"]+ df_2.iloc[-1]["distance"])/2))
 
-    distances = list(range(end))
+    distances = list(range(start, end))
 
     distances_1 = df_1["distance"].values
     distances_2 = df_2["distance"].values
 
-    to_interpolate_1 = np.array(list(range(end)))
-    to_interpolate_2 = np.array(list(range(end)))
+    to_interpolate_1 = np.array(list(range(start, end)))
+    to_interpolate_2 = np.array(list(range(start, end)))
     
     vel_1 = df_1["speed"].values
     vel_2 = df_2["speed"].values
@@ -379,24 +380,25 @@ def run():
             df_1_bis = df_1[df_1['valid']].reset_index().copy()
             df_2_bis = df_2[df_2['valid']].reset_index().copy()                                       
 
-            # set reference
+            # Correct the starting distance reference
             offset = df_1_bis.iloc[0]['distance'] 
             df_1_bis['distance'] = df_1_bis['distance'].apply(lambda x: x-offset)                                                
 
             offset = df_2_bis.iloc[0]['distance'] 
             df_2_bis['distance'] = df_2_bis['distance'].apply(lambda x: x-offset)
 
-            # total_km = np.round(max(df_1_bis.iloc[-1]['distance'], df_2_bis.iloc[-1]['distance'])/1000).astype(int)
-            # final_km = st.slider("choose Final Km to compare", 
-            #                          min_value=0, max_value=total_km,
-            #                          value=total_km, step=1)
+            #segment selection
+            total_km = np.round(max(df_1_bis.iloc[-1]['distance'], df_2_bis.iloc[-1]['distance'])/1000).astype(int)
+            segment = st.slider("choose start and finish of the segment (in Km) ", 
+                                      min_value=0, max_value=total_km,
+                                      value=(0,total_km), step=1)
             
 
-            # df_1_bis['valid'] = df_1_bis.apply(lambda x: x.valid and x.distance <= final_km*1000, axis=1 )
-            # df_2_bis['valid'] = df_2_bis.apply(lambda x: x.valid and x.distance <= final_km*1000, axis=1)
+            df_1_bis['valid'] = df_1_bis.apply(lambda x: x.valid and x.distance >= segment[0]*1000 and x.distance <= segment[1]*1000, axis=1 )
+            df_2_bis['valid'] = df_2_bis.apply(lambda x: x.valid and x.distance >= segment[0]*1000 and x.distance <= segment[1]*1000, axis=1 )
 
-            # df_1_bis = df_1_bis[df_1_bis['valid']].reset_index().copy()
-            # df_2_bis = df_2_bis[df_2_bis['valid']].reset_index().copy()  
+            df_1_bis = df_1_bis[df_1_bis['valid']].reset_index().copy()
+            df_2_bis = df_2_bis[df_2_bis['valid']].reset_index().copy()  
 
             #st.map(df_1_bis, latitude='position_lat', longitude='position_long', size=100)
             map = folium.Map(location=[df_1.iloc[10]["position_lat"], df_1.iloc[10]["position_long"] ], zoom_start=13)

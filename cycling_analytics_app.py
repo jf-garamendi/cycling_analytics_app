@@ -366,7 +366,7 @@ def run():
     ### Streamlit
     st.header("Rider 1")
     rider_name_1 = st.text_input('Name of the first rider')
-    weight_1 = st.number_input(f'Insert weight for rider {rider_name_1}', value=1)
+    weight_1 = st.number_input(f'Insert weight for rider 1: {rider_name_1}', value=1)
     
     
     uploaded_files_1 = st.file_uploader("Choose a set of FIT.gz file for the first rider", accept_multiple_files=True)
@@ -374,7 +374,7 @@ def run():
     st.header ("Rider 2")
 
     rider_name_2 = st.text_input('Name of the second rider')
-    weight_2 = st.number_input(f'Insert weight for rider {rider_name_2}', value=1)
+    weight_2 = st.number_input(f'Insert weight for rider 2: {rider_name_2}', value=1)
 
     uploaded_files_2 = st.file_uploader("Choose a set of FIT.gz file for the second rider", accept_multiple_files=True)
 

@@ -6,18 +6,23 @@ from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
+from streamlit_folium import st_folium
+import folium
+from datetime import datetime, timedelta
 
 ### CONSTANTS
 TEST = True
 
 # Number of decimals for rounding in the coordinates
-N_DECIMALS = 4
+N_DECIMALS = 3
 
 #Difference in seconds to consider two activities correspond to the same race
-DELTA_SECONDS = 900 # 10 minutes
+DELTA_SECONDS = 2 # 1 minutes
 
 # Speed threshold, in Km/h to consider two speeds as equal
 SPEED_THR = 0.25
+
+FIELDS_TO_WORK_WITH = ['timestamp', 'position_lat', 'position_long', 'distance', 'speed', 'enhanced_altitude', 'power']
 ### END CONSTANTS
 
 
@@ -25,6 +30,7 @@ SPEED_THR = 0.25
 @st.cache_data
 def read_files(list_file_content):
     rides = []
+    events = []
     for f in list_file_content:
         bytes_data = f.read()
 
@@ -39,24 +45,30 @@ def read_files(list_file_content):
         
         if len(messages['record_mesgs'])>3:
             rides.append(messages['record_mesgs'])
+            events.append(messages['event_mesgs'])
 
-
-
-
-    return rides
+    return rides, events
 
 @st.cache_data
-def build_df(record_msg):
+def build_df(record_msg, events_msg):
     #st.write('build_df')
     df = pd.DataFrame(record_msg)
+
+    df['is_start'] = False
+    
 
 
     # values without gps coordinates are uselss
     df.dropna(subset=["timestamp", "position_long", "position_lat", "distance", "enhanced_speed"],inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
 
     # Transform into degrees
-    df["position_long"] = (df["position_long"] / 11930465).round(N_DECIMALS)
-    df["position_lat"] = (df["position_lat"] / 11930465).round(N_DECIMALS)
+    df["position_long"] = (df["position_long"] / 11930465) 
+    df["position_lat"] = (df["position_lat"] / 11930465)
+
+    df["rounded_long"] = df["position_long"].round(N_DECIMALS)
+    df["rounded_lat"] = df["position_lat"].round(N_DECIMALS)
     
     # Transorm from m/s to Km/h
     df["speed"] = (df['enhanced_speed']*3.6).round(1)
@@ -64,22 +76,28 @@ def build_df(record_msg):
     #Distance in meters
     df["distance"] = (df["distance"] ).round().astype(int)
 
+    start_hours = [ msg['timestamp'].timestamp() for msg in events_msg if ( msg['event']=='timer' and msg['event_type']=='start')]
+
+    df['is_start'] = df['timestamp'].apply(lambda x : x.timestamp() in start_hours)
+    df.loc[0, 'is_start'] = True
+
+
 
     return df
+
 
 @st.cache_data
 def pair_rides(list_file_content_1, list_file_content_2):
     #st.write('pair_rides')
 
-    rides_1 = read_files(list_file_content_1)
-    rides_2 = read_files(list_file_content_2)
+    rides_1, events_1 = read_files(list_file_content_1)
+    rides_2, events_2 = read_files(list_file_content_2)
 
-    rides_df_1 = [build_df(r) for r in rides_1]
-    rides_df_2 = [build_df(r) for r in rides_2]
+    rides_df_1 = [build_df(r, e) for r,e in zip(rides_1, events_1)]
+    rides_df_2 = [build_df(r, e) for r,e in zip(rides_2, events_2)]
 
     paired_1 = []
     paired_2 = []
-    located_starts = []
 
     for df_1 in rides_df_1:        
         i = 0
@@ -93,72 +111,80 @@ def pair_rides(list_file_content_1, list_file_content_2):
 
                 #if races are the same day
                 if  diff_time.days == 0:
-
-                    if df_1.iloc[0]['timestamp'] < df_2.iloc[0]['timestamp']:
-                        earlier_df = df_1
-                        later_df = df_2
-                    else:
-                        earlier_df = df_2
-                        later_df = df_1
                     
-                    located_common_start = False
-                    pos_time = 0
-                    t2 = later_df.iloc[0]['timestamp']
-                    while (not located_common_start) and (pos_time < earlier_df.shape[0]):
-                        t1 = earlier_df.iloc[pos_time]['timestamp']
-                        
-
-                        if (t2-t1).seconds <= 1:
-                                                
-                            #paired_1.append(df_1[pos_time:-1])
-                            paired_1.append(df_1)
-                            paired_2.append(df_2)
-
-                            located_starts.append(t1)
-
-                            located_common_start = True
-                        
-                        pos_time +=1
+                    paired_1.append(df_1)
+                    paired_2.append(df_2)
             
             i += 1
 
-    return paired_1, paired_2, located_starts
+    return paired_1, paired_2
         
 @st.cache_data        
-def get_joint_data(df_1, df_2, start_hour, tracks = None):
+def get_joint_data(df_1, df_2,  tracks = None):
     #st.write('get_joint_data')
 
-    def set_start(df):
-        located_start = False
-        pos_time = 0
-    
-        while (not located_start) and (pos_time < df.shape[0]):
-            t = df.iloc[pos_time]['timestamp']
+    # def group_coor(df):
+    #     df = df[FIELDS_TO_WORK_WITH]
+    #     relative_position = 0        
+    #     df['coor_group'] = 0 
+    #     for idx, row in df[1:].iterrows():
+    #         current_long = row["position_long"]
+    #         current_lat = row["position_lat"]
+
+    #         previous_long = df.iloc[idx-1]["position_long"]
+    #         previous_lat = df.iloc[idx-1]["position_lat"]
+    #         if (previous_long == current_long) and (previous_lat == current_lat):
+    #             df.loc[idx, "coor_group"] = df.iloc[idx-1]["coor_group"]
+    #         else:
+    #             relative_position += 1 
+    #             df.loc[idx, "coor_group"] = relative_position
+
         
-            if abs(start_hour - t.timestamp()) <= 1:
-                df = df[pos_time:-1]
-                
-                offset = df.iloc[0]['distance'] 
-                df['distance'] = df['distance'].apply(lambda x: x-offset)                                                
-
-                located_start = True
+    #     df = df.groupby(["position_long", "position_lat", "coor_group"], sort=False).mean().reset_index()
         
-            pos_time +=1
-
-        return df
+    #     return df
     
-    df_1 = set_start(df_1)
-    df_2 = set_start(df_2)
 
+    
+    
+    # df_1 = group_coor(df_1)
+    # df_2 = group_coor(df_2)
+
+
+    # joint_df = pd.merge(df_1, df_2, on = ["rounded_long", "rounded_lat",], how='inner')
+
+    # offset_1 = joint_df.iloc[0]['distance_x']
+    # offset_2 = joint_df.iloc[0]['distance_y']
+    # joint_df['distance_x'] = joint_df['distance_x'].apply(lambda x: x-offset_1) 
+    # joint_df['distance_y'] = joint_df['distance_y'].apply(lambda x: x-offset_2) 
+
+    # distances = (joint_df["distance_x"].values + joint_df["distance_y"].values)/2
+
+    # vel_1 = joint_df["speed_x"].values
+    # vel_2 = joint_df["speed_y"].values
+
+    # altitud_1 = joint_df["enhanced_altitude_x"].values
+    # altitud_2 = joint_df["enhanced_altitude_y"].values
+
+    # speeds_1 = vel_1 #np.interp(to_interpolate_1, distances_1, vel_1)
+    # speeds_2 = vel_2 #np.interp(to_interpolate_2, distances_2, vel_2)
+
+    # altitud_1_interp = altitud_1 #np.interp(to_interpolate_1, distances_1, altitud_1)
+    # altitud_2_interp = altitud_2 #np.interp(to_interpolate_2, distances_2, altitud_2)
+
+    # #------------------
+    # #------------------
+
+    start = int(np.round((df_1.iloc[0]["distance"]+ df_2.iloc[0]["distance"])/2))
     end = int(np.round((df_1.iloc[-1]["distance"]+ df_2.iloc[-1]["distance"])/2))
 
-    distances = list(range(end))
+    distances = list(range(start, end))
 
     distances_1 = df_1["distance"].values
     distances_2 = df_2["distance"].values
 
-    to_interpolate_1 = np.array(list(range(end)))
-    to_interpolate_2 = np.array(list(range(end)))
+    to_interpolate_1 = np.array(list(range(start, end)))
+    to_interpolate_2 = np.array(list(range(start, end)))
     
     vel_1 = df_1["speed"].values
     vel_2 = df_2["speed"].values
@@ -219,8 +245,83 @@ def plot_profile_comparative(speeds_1, speeds_2, distances, altitudes, name_1, n
     #ax.set_xticklabels(distances[idx], fontsize=25)
     #ax.set_yticklabels(altitudes[idx], fontsize=25)
 
-    return fig
+    return fig, ax
 
+import pandas as pd
+
+import pandas as pd
+
+def add_kilojoules_per_hour(df):
+    # Convert power in watts to kilojoules (1 watt-second = 0.001 kilojoules)
+    df['kilojoules'] = df['power'] * 0.001
+    
+    # Calculate the rolling sum over the last 3600 seconds (1 hour), assuming the data is in 1-second intervals
+    tmp_df = df[['timestamp', 'kilojoules']].copy()
+    tmp_df = tmp_df.set_index('timestamp')    
+    tmp_df = tmp_df.rolling(window=timedelta(hours=1), min_periods=1).sum()
+    df['kilojoules_last_hour']  = tmp_df['kilojoules'].values
+    
+    return df
+
+# Example usage:
+# Assuming 'data' is your DataFrame with 'timestamp' and 'power' columns
+# data = add_kilojoules_per_hour(data)
+
+
+
+# @st.cache_data
+# def locate_start(df_1, df_2):
+#     start = None
+#     starts_1 = []
+#     starts_2 = []
+
+#     start_hours = df_1[df_1['is_start']]['timestamp']
+
+    
+#     for  time_1 in start_hours:
+
+#         located_start = False
+#         pos_2 = 0
+#         while (not located_start) and (pos_2 < df_2.shape[0] ):
+#             time_2 = df_2.iloc[pos_2]['timestamp']
+
+#             if abs(time_1.timestamp() - time_2.timestamp() ) < DELTA_SECONDS:
+#                 located_start = True
+
+#                 starts_1.append(time_1)
+        
+#             pos_2 += 1
+
+ 
+#     start_hours = df_2[df_2['is_start']]['timestamp']    
+#     for  time_2 in start_hours:
+
+#         located_start = False
+#         pos_1 = 0
+#         while (not located_start) and (pos_1 < df_1.shape[0] ):
+#             time_1 = df_1.iloc[pos_1]['timestamp']
+
+#             if abs(time_1.timestamp() - time_2.timestamp() ) < DELTA_SECONDS:
+#                 located_start = True
+
+#                 starts_2.append(time_2)
+        
+#             pos_1 += 1
+
+
+#     # Keep the lowest
+#     #located_start = False
+#     #pos_1 = 0
+#     # while (not located_start) and (pos_1 < len(starts_1)):
+#     #    time_1 = starts_1[pos_1]
+
+#     #    pos_2 = 0
+#     #    while (not located_start) and (pos_2 < len(starts_2)):
+#     #        time_2 = starts_2[pos_2]
+
+#     start = min (starts_1 + starts_2)
+
+#     return start
 
 
 # def make_map(df_1, df_2):
@@ -263,34 +364,105 @@ def plot_profile_comparative(speeds_1, speeds_2, distances, altitudes, name_1, n
 ############ Main
 def run():
     ### Streamlit
+    st.header("Rider 1")
     rider_name_1 = st.text_input('Name of the first rider')
+    weight_1 = st.number_input(f'Insert weight for rider 1: {rider_name_1}', value=1)
     
     
     uploaded_files_1 = st.file_uploader("Choose a set of FIT.gz file for the first rider", accept_multiple_files=True)
 
+    st.header ("Rider 2")
+
     rider_name_2 = st.text_input('Name of the second rider')
+    weight_2 = st.number_input(f'Insert weight for rider 2: {rider_name_2}', value=1)
 
     uploaded_files_2 = st.file_uploader("Choose a set of FIT.gz file for the second rider", accept_multiple_files=True)
 
-    rides_df_1, rides_df_2, located_starts = pair_rides(uploaded_files_1, uploaded_files_2)
+    rides_df_1, rides_df_2= pair_rides(uploaded_files_1, uploaded_files_2)
 
     if len(rides_df_1)  == 0 or (len(rides_df_1) != len(rides_df_2)):
         st.write('THERE IS NO CORRESPONDENCE BETWEEN FILES')
     else:        
 
-        for df_1, df_2, start_datetime in zip (rides_df_1, rides_df_2, located_starts):
-            start_date = st.date_input('Estimated day ', value=start_datetime)
-            start_time = st.time_input("Estimated hour, fix it if needed: ", value = start_datetime, step=60)
+        for id, (df_1, df_2) in enumerate(zip(rides_df_1, rides_df_2)):
+            time_1 = df_1.iloc[0]['timestamp'].timestamp()
+            time_2 = df_2.iloc[0]['timestamp'].timestamp()
 
-            start_datetime = datetime.combine(start_date, start_time)
-            start_datetime = datetime.timestamp(start_datetime)
+            min_timestamp = min(time_1, time_2)
 
-            s1, s2, dis, alt= get_joint_data(df_1, df_2, start_datetime)
+            time_1 = df_1.iloc[-1]['timestamp'].timestamp()
+            time_2 = df_2.iloc[-1]['timestamp'].timestamp()
+
+            max_timestamp = max(time_1, time_2)
+            
+            range_values = (datetime.fromtimestamp(min_timestamp), datetime.fromtimestamp(max_timestamp))
+            start_datetime = st.slider("choose starting hour", 
+                                     min_value=range_values[0], max_value=range_values[1],
+                                     value=range_values[0], step=timedelta(minutes=1),
+                                     format='H:mm')
+
+            df_1['valid'] = df_1['timestamp'].apply(lambda x: x.timestamp() >= start_datetime.timestamp() )
+            df_2['valid'] = df_2['timestamp'].apply(lambda x: x.timestamp() >= start_datetime.timestamp() )
+
+            df_1_bis = df_1[df_1['valid']].reset_index().copy()
+            df_2_bis = df_2[df_2['valid']].reset_index().copy()                                       
+
+            # Correct the starting distance reference
+            offset = df_1_bis.iloc[0]['distance'] 
+            df_1_bis['distance'] = df_1_bis['distance'].apply(lambda x: x-offset)                                                
+
+            offset = df_2_bis.iloc[0]['distance'] 
+            df_2_bis['distance'] = df_2_bis['distance'].apply(lambda x: x-offset)
+
+            #Compute kilojules
+            df_1_bis = add_kilojoules_per_hour(df_1_bis)
+            df_2_bis = add_kilojoules_per_hour(df_2_bis)
+
+            #segment selection
+            total_km = np.round(max(df_1_bis.iloc[-1]['distance'], df_2_bis.iloc[-1]['distance'])/1000).astype(int)
+            segment = st.slider("choose start and finish of the segment (in Km) ", 
+                                      min_value=0, max_value=total_km,
+                                      value=(0,total_km), step=1)
+            
+
+            df_1_bis['valid'] = df_1_bis.apply(lambda x: x.valid and x.distance >= segment[0]*1000 and x.distance <= segment[1]*1000, axis=1 )
+            df_2_bis['valid'] = df_2_bis.apply(lambda x: x.valid and x.distance >= segment[0]*1000 and x.distance <= segment[1]*1000, axis=1 )
+
+            df_1_bis = df_1_bis[df_1_bis['valid']].reset_index().copy()
+            df_2_bis = df_2_bis[df_2_bis['valid']].reset_index().copy()  
+
+            #st.map(df_1_bis, latitude='position_lat', longitude='position_long', size=100)
+            map = folium.Map(location=[df_1.iloc[10]["position_lat"], df_1.iloc[10]["position_long"] ], zoom_start=13)
+            track = [ (lat, long) for lat,long in zip(df_1_bis["position_lat"].values, df_1_bis["position_long"].values)]
+            folium.PolyLine(track, color='blue', weight=8).add_to(map)            
+            # icon_end = folium.Icon(color="blue", icon="stop")
+            icon_start = folium.Icon(color="blue", icon="play")
+            folium.Marker(location=track[0], icon=icon_start).add_to(map)
+            #folium.Marker(location=track[-1], icon=icon_end).add_to(map)
+
+            track = [ (lat, long) for lat,long in zip(df_2_bis["position_lat"].values, df_2_bis["position_long"].values)]
+            folium.PolyLine(track, color='red', weight=4).add_to(map)
+            # icon_end = folium.Icon(color="red", icon="stop")
+            icon_start = folium.Icon(color="red", icon="play")
+            folium.Marker(location=track[0], icon=icon_start).add_to(map)
+            # folium.Marker(location=track[-1], icon=icon_end).add_to(map)
+            
+            st_data = st_folium(map, width=725)
+
+
+            s1, s2, dis, alt= get_joint_data(df_1_bis, df_2_bis)
 
             str_date = df_1.iloc[0]['timestamp'].strftime("%d %B, %Y")
             title = f"Race comparative: {str_date}"
 
-            fig = plot_profile_comparative(s1, s2, np.array(dis), np.array(alt), rider_name_1, rider_name_2, title)
+            fig, ax_altitude = plot_profile_comparative(s1, s2, np.array(dis), np.array(alt), rider_name_1, rider_name_2, title)
+
+            ax2 = ax_altitude.twinx()
+            ax2.set_ylabel('Kj/h/kg', fontsize=25)
+            
+            ax2.plot(df_1_bis['distance']/1000, df_1_bis['kilojoules_last_hour']/weight_1, color='blue')
+            ax2.plot(df_2_bis['distance']/1000, df_2_bis['kilojoules_last_hour']/weight_2, color='red')
+
 
             st.pyplot(fig)
 

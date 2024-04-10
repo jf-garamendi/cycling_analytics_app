@@ -8,45 +8,45 @@ from datetime import datetime, timedelta
 N_DECIMALS = 3
 
 ### Function
-'''
-def plot_distance_differences(dataframes_dict, leader):
-    fig, ax = plt.subplots()
-    fig.set_size_inches(20, 8)
 
-    # Initialize an empty DataFrame to store the differences
-    differences_df = pd.DataFrame(columns=['timestamp', 'difference'])
+# def plot_distance_differences(dataframes_dict, leader):
+#     fig, ax = plt.subplots()
+#     fig.set_size_inches(20, 8)
 
-    reference_df = dataframes_dict[leader]
+#     # Initialize an empty DataFrame to store the differences
+#     differences_df = pd.DataFrame(columns=['timestamp', 'difference'])
 
-    # Iterate through each dataframe in the list
-    for name, df in dataframes_dict.items():
-        # Iterate through each row in the current dataframe
-        for index, row in df.iterrows():
-            # Find the nearest timestamp in the reference dataframe
-            nearest_time = reference_df.iloc[
-                (reference_df['timestamp'] - row['timestamp']).abs().argsort()[:1]
-                ]['timestamp'].values[0]
+#     reference_df = dataframes_dict[leader]
+
+#     # Iterate through each dataframe in the list
+#     for name, df in dataframes_dict.items():
+#         # Iterate through each row in the current dataframe
+#         for index, row in df.iterrows():
+#             # Find the nearest timestamp in the reference dataframe
+#             nearest_time = reference_df.iloc[
+#                 (reference_df['timestamp'] - row['timestamp']).abs().argsort()[:1]
+#                 ]['timestamp'].values[0]
             
-            # Find the corresponding row in the reference dataframe
-            reference_row = reference_df[reference_df['timestamp'] == nearest_time]
+#             # Find the corresponding row in the reference dataframe
+#             reference_row = reference_df[reference_df['timestamp'] == nearest_time]
             
-            # Calculate the difference in the "distance" column between the current dataframe and the reference dataframe
-            difference = row['distance'] - reference_row['distance'].values[0]
+#             # Calculate the difference in the "distance" column between the current dataframe and the reference dataframe
+#             difference = row['distance'] - reference_row['distance'].values[0]
             
-            # Append the difference to the differences DataFrame
-            differences_df = differences_df.append({'timestamp': row['timestamp'], 'difference': difference}, ignore_index=True)
+#             # Append the difference to the differences DataFrame
+#             differences_df = differences_df.append({'timestamp': row['timestamp'], 'difference': difference}, ignore_index=True)
 
-        # Plot the differences against the "time" column
-        ax.plot(differences_df['timestamp'], differences_df['difference'], label= name)
+#         # Plot the differences against the "time" column
+#         ax.plot(differences_df['timestamp'], differences_df['difference'], label= name)
 
-        # Add labels and title
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Distance Difference')
-        ax.set_title('Distance Difference vs Time')
-        ax.legend()
+#         # Add labels and title
+#         ax.set_xlabel('Time')
+#         ax.set_ylabel('Distance Difference')
+#         ax.set_title('Distance Difference vs Time')
+#         ax.legend()
 
-    return fig, ax
-'''
+#     return fig, ax
+
 
 def plot_distance_differences(dataframes_dict, leader):
     fig, ax = plt.subplots()
@@ -164,13 +164,20 @@ def add_kilojoules_per_hour(df):
     # Convert power in watts to kilojoules (1 watt-second = 0.001 kilojoules)
     df['kilojoules'] = df['power'] * 0.001
     
-    # Calculate the rolling sum over the last 3600 seconds (1 hour), assuming the data is in 1-second intervals
-    tmp_df = df[['timestamp', 'kilojoules']].copy()
-    tmp_df = tmp_df.set_index('timestamp')    
-    tmp_df = tmp_df.rolling(window=timedelta(hours=1), min_periods=1).sum()
-    df['kilojoules_last_hour']  = tmp_df['kilojoules'].values
+
+    df['kilojoules_last_hour']  = df['kilojoules'].rolling(3600).sum()
     
     return df
+
+#@st.cache_data
+def add_best_power_values(df, period_list):
+    #period_list in seconds, e.g, [30, 60, 600, 1200, 3600] for best 30", 1', 10', 20', 60'
+    # Calculate the rolling sum over the last 3600 seconds (1 hour), assuming the data is in 1-second intervals
+    for period in period_list:
+        df[f'Best {period}"']  = df['power'].rolling(period).mean() 
+    
+    return df
+
 
 
 @st.cache_data

@@ -1,29 +1,40 @@
 from matplotlib import pyplot as plt
 import streamlit as st
-from pages.aux import read_files_dict, build_df, add_best_power_values
+from pages.aux import read_files_dict, build_df, add_best_power_values,  compute_avg_NP
 from datetime import datetime, timedelta
 import pandas as pd
 import io
 from datetime import timedelta
 
-def show_metrics(riders_data):
+
+
+def show_metrics(riders_data, weights, ftps):
     data = []
     for rider, df in riders_data.items():
         # Build the best poers
         df = add_best_power_values(df, [30, 60, 600, 1200, 3600])
+
+        NP = compute_avg_NP(df)
+
+        #computing coasting
+        df['is_pedaling'] = df['cadence'].apply(lambda x : 1 if x > 0 else 0)
+
+        coasting = df['is_pedaling'].sum() / df.shape[0]
+
         row = {
             'name': rider,
             'Pos': None,
-            'Coasting': None,
+            'Coasting': coasting,
             'distance': df['distance'].iloc[-1]/1000,
-            'Avg Speed': df['enhanced_speed'].mean(),            
+            'Avg Speed': df['speed'].mean(),            
             'Avg Power': df['power'].mean(),
-            'NP': None,
-            'IF': None,
+            'NP': NP,
+            'IF': NP/ftps[rider],
             'AP  FTP': None,
             'Work (Kj)': df['power'].sum()*0.001,
-            'Power/kg': None,
-            'Kj/kg': None,
+            'Power/kg': df['power'].mean()/weights[rider],
+            'NP/kg': NP/weights[rider],
+            'Kj/kg': df['power'].sum()*0.001 / weights[rider],
             'Pmax' : None,
             'Best 30" ': df['Best 30"'].max(),
             "Best 1'  ": df['Best 60"'].max(),
@@ -33,7 +44,7 @@ def show_metrics(riders_data):
             "CS 1' ": None,
             "CS 5' ": None,
             "CS 12' ": None,
-            'Avg HR': None
+            'Avg HR': df['heart_rate'].mean()
         }
 
         data.append(row)
@@ -116,8 +127,21 @@ def run():
 
             rides_corrected[name] =  df_valid
 
+        st.header("Add FTP and weight")
+        weight_dict = {}
+        ftp_dict = {}
+        for name in rides_corrected.keys():
+            ftp = st.number_input(f'FTP {name}', key='ftp_{name}', value=1)
+            w = st.number_input(f'Weight {name}', key='weight_{name}', value=1)
 
-        show_metrics(rides_corrected)
+            ftp_dict[name] = ftp
+            weight_dict[name] = w
+
+
+
+        st.header("Result")
+
+        show_metrics(rides_corrected, weight_dict, ftp_dict)
 
 
 

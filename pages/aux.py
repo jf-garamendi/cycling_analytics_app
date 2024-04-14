@@ -193,3 +193,23 @@ def plot_df(df, x_column='distance', y_columns=['altitude', 'kilojoules'], fig=N
         )
 
     return fig, ax
+
+@st.cache_data
+def compute_avg_NP(df):
+    df_tmp = df.copy()
+    df_tmp['rolling_average']  = df_tmp['power'].rolling(30).mean()
+    df_tmp.dropna(subset=["rolling_average"], inplace=True)
+    df_tmp.reset_index(drop=True, inplace=True)
+
+    NP = df_tmp['rolling_average'].apply(lambda x : x**4)
+
+    NP = NP.mean()
+
+    return NP**0.25
+
+
+    
+
+
+
+    

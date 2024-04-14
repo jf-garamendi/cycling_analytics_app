@@ -17,7 +17,7 @@ def show_metrics(riders_data, weights, ftps):
         NP = compute_avg_NP(df)
 
         #computing coasting
-        df['w is 0'] = df['power'].apply(lambda x : 1 if x <= 10 else 0)
+        df['w is 0'] = df['power'].apply(lambda x : 1 if x <= 30 else 0)
 
         coasting = df['w is 0'].sum() / df.shape[0]
 

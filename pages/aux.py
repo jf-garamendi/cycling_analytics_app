@@ -169,7 +169,7 @@ def add_kilojoules_per_hour(df):
     
     return df
 
-#@st.cache_data
+@st.cache_data
 def add_best_power_values(df, period_list):
     #period_list in seconds, e.g, [30, 60, 600, 1200, 3600] for best 30", 1', 10', 20', 60'
     # Calculate the rolling sum over the last 3600 seconds (1 hour), assuming the data is in 1-second intervals

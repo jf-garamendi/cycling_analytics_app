@@ -131,8 +131,8 @@ def run():
         weight_dict = {}
         ftp_dict = {}
         for name in rides_corrected.keys():
-            ftp = st.number_input(f'FTP {name}', key='ftp_{name}', value=1)
-            w = st.number_input(f'Weight {name}', key='weight_{name}', value=1)
+            ftp = st.number_input(f'FTP {name}', key=f'ftp_{name}', value=1 )
+            w = st.number_input(f'Weight {name}', key=f'weight_{name}', value=1)
 
             ftp_dict[name] = ftp
             weight_dict[name] = w

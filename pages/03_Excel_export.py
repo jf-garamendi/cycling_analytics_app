@@ -63,7 +63,7 @@ def show_metrics(riders_data, weights, ftps):
             "CS 1' ": (df['cs 1'].max()**2) / weight,
             "CS 5' ": (df['cs 5'].max()**2)/weight,
             "CS 12' ": (df['cs 12'].max()**2) / weight,
-            'Avg HR': df['heart_rate'].mean()
+            'Avg HR': df['heart_rate'].mean() if 'heart_rate' in df.columns else 0
         }
 
         for k, v in row.items():

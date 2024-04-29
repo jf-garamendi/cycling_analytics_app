@@ -1,6 +1,6 @@
 from matplotlib import pyplot as plt
 import streamlit as st
-from pages.aux import read_files_dict, build_df, add_best_power_values,  compute_avg_NP
+from pages.aux import read_files_dict, build_df, add_best_power_values,  compute_avg_NP, add_cs
 from datetime import datetime, timedelta
 import pandas as pd
 import io
@@ -12,40 +12,63 @@ def show_metrics(riders_data, weights, ftps):
     data = []
     for rider, df in riders_data.items():
         # Build the best poers
+        ftp = ftps[rider]
+        weight = weights[rider]
         df = add_best_power_values(df, [30, 60, 600, 1200, 3600])
+        df = add_cs(df, [1, 5, 12])
 
         NP = compute_avg_NP(df)
+
+        df['above FTP'] = df['power'].apply(lambda x: 1 if x > ftp else 0)
+
+        AP_FTP = (df['above FTP'].sum() / df.shape[0]) * 100
 
         #computing coasting
         df['w is 0'] = df['power'].apply(lambda x : 1 if x <= 30 else 0)
 
-        coasting = df['w is 0'].sum() / df.shape[0]
+        coasting = (df['w is 0'].sum() / df.shape[0]) * 100
+
+        duration = df['timestamp'].iloc[-1] - df['timestamp'].iloc[0]
+
+        hours = duration.seconds // 3600
+
+        minutes = (duration.seconds - hours*3600) // 60
+
+        seconds = duration.seconds - hours*3600 - minutes * 60
+
+        duration_str = f'{hours}:{minutes:02d}:{seconds:02d}'
+
 
         row = {
             'name': rider,
+            'time': duration_str,
             'Pos': None,
             'Coasting': coasting,
             'distance': df['distance'].iloc[-1]/1000,
             'Avg Speed': df['speed'].mean(),            
             'Avg Power': df['power'].mean(),
             'NP': NP,
-            'IF': NP/ftps[rider],
-            'AP  FTP': None,
+            'IF': NP/ftp,
+            'AP  FTP': AP_FTP,
             'Work (Kj)': df['power'].sum()*0.001,
-            'Power/kg': df['power'].mean()/weights[rider],
-            'NP/kg': NP/weights[rider],
-            'Kj/kg': df['power'].sum()*0.001 / weights[rider],
+            'Power/kg': df['power'].mean()/weight,
+            'NP/kg': NP/weight,
+            'Kj/kg': df['power'].sum()*0.001 / weight,
             'Pmax' : None,
             'Best 30" ': df['Best 30"'].max(),
             "Best 1'  ": df['Best 60"'].max(),
             "Best 10' ": df['Best 600"'].max(),
             "Best 20' ": df['Best 1200"'].max(),
             "Best 60' ": df['Best 3600"'].max(),
-            "CS 1' ": None,
-            "CS 5' ": None,
-            "CS 12' ": None,
+            "CS 1' ": (df['cs 1'].max()**2) / weight,
+            "CS 5' ": (df['cs 5'].max()**2)/weight,
+            "CS 12' ": (df['cs 12'].max()**2) / weight,
             'Avg HR': df['heart_rate'].mean()
         }
+
+        for k, v in row.items():
+            if k != 'name' and k != 'time' and v is not None:
+                row[k] = round(v, 2)
 
         data.append(row)
 

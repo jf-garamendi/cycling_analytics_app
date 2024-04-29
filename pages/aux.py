@@ -178,7 +178,14 @@ def add_best_power_values(df, period_list):
     
     return df
 
-
+@st.cache_data
+def add_cs(df, period_list):
+    #period_list in minutes, 
+    for period in period_list:
+        period = period
+        df[f'cs {period}']  = df['power'].rolling(period*60).mean() 
+    
+    return df
 
 @st.cache_data
 def plot_df(df, x_column='distance', y_columns=['altitude', 'kilojoules'], fig=None, ax = None):

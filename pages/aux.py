@@ -67,9 +67,9 @@ def plot_distance_differences(dataframes_dict, leader):
         ax.plot(reference_df.iloc[:max_lenght]['distance']/1000, differences, label= name)
 
         # Add labels and title
-        ax.set_xlabel('Distance in meters')
-        ax.set_ylabel('Distance Difference in Kms')
-        ax.set_title('Distance Vs Difference: Positive values means the riders is in front of the Leader.')
+        ax.set_xlabel('Distance in Kms')
+        ax.set_ylabel('Distance Difference in Meters')
+        ax.set_title('Distance Vs Difference: Positive values means the rider is in front of the Leader.')
         ax.legend()
     
     return fig, ax

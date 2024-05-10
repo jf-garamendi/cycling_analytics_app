@@ -136,6 +136,13 @@ def build_df(record_msg, events_msg):
     df.dropna(subset=["timestamp", "position_long", "position_lat", "distance", "enhanced_speed"],inplace=True)
     df.reset_index(drop=True, inplace=True)
 
+    #just in case someone forgets the heart monitor or the powermeter doesn't work
+    if not('heart_rate' in df.columns):
+        df['heart_rate'] = 0
+
+    if not('power' in df.columns):
+        df['power'] = 0
+
 
     # Transform into degrees
     df["position_long"] = (df["position_long"] / 11930465) 
@@ -174,7 +181,10 @@ def add_best_power_values(df, period_list):
     #period_list in seconds, e.g, [30, 60, 600, 1200, 3600] for best 30", 1', 10', 20', 60'
     # Calculate the rolling sum over the last 3600 seconds (1 hour), assuming the data is in 1-second intervals
     for period in period_list:
-        df[f'Best {period}"']  = df['power'].rolling(period).mean() 
+        if 'power' in df.columns:
+            df[f'Best {period}"']  = df['power'].rolling(period).mean() 
+        else:
+            df[f'Best {period}"'] = 0
     
     return df
 
@@ -182,8 +192,10 @@ def add_best_power_values(df, period_list):
 def add_cs(df, period_list):
     #period_list in minutes, 
     for period in period_list:
-        period = period
-        df[f'cs {period}']  = df['power'].rolling(period*60).mean() 
+        if 'power' in df.columns:
+            df[f'cs {period}']  = df['power'].rolling(period*60).mean() 
+        else:
+            df[f'cs {period}'] = 0 
     
     return df
 

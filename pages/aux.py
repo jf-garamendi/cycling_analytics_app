@@ -61,15 +61,15 @@ def plot_distance_differences(dataframes_dict, leader):
     # Iterate through each dataframe in the list
     for name, df in dataframes_dict.items():
         max_lenght = min(df.shape[0], reference_df.shape[0])
-        differences = reference_df.iloc[:max_lenght]['distance'].values - df.iloc[:max_lenght]['distance'].values
+        differences = df.iloc[:max_lenght]['distance'].values - reference_df.iloc[:max_lenght]['distance'].values  
         
         # Plot the differences against the "time" column
-        ax.plot(reference_df.iloc[:max_lenght]['distance'], differences, label= name)
+        ax.plot(reference_df.iloc[:max_lenght]['distance']/1000, differences, label= name)
 
         # Add labels and title
-        ax.set_xlabel('Distance')
-        ax.set_ylabel('Distance Difference')
-        ax.set_title('Distance Vs Difference')
+        ax.set_xlabel('Distance in meters')
+        ax.set_ylabel('Distance Difference in Kms')
+        ax.set_title('Distance Vs Difference: Positive values means the riders is in front of the Leader.')
         ax.legend()
     
     return fig, ax

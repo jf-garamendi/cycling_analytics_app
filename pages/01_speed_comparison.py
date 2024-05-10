@@ -388,7 +388,7 @@ def run():
             time_1 = df_1.iloc[0]['timestamp'].timestamp()
             time_2 = df_2.iloc[0]['timestamp'].timestamp()
 
-            min_timestamp = min(time_1, time_2)
+            min_timestamp = max(time_1, time_2)
 
             time_1 = df_1.iloc[-1]['timestamp'].timestamp()
             time_2 = df_2.iloc[-1]['timestamp'].timestamp()
